@@ -13,3 +13,7 @@ firebase-debug.log
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Frontend build
+frontend/dist/
+frontend/.env
