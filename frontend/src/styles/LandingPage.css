@@ -1,0 +1,54 @@
+.landing-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  text-align: center;
+  padding: 20px;
+}
+
+.landing-container h1 {
+  font-size: 4rem;
+  margin-bottom: 10px;
+}
+
+.landing-container p {
+  font-size: 1.2rem;
+  margin-bottom: 50px;
+  color: #f0f0f0;
+}
+
+.landing-options {
+  display: flex;
+  gap: 40px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.card {
+  background: white;
+  color: #333;
+  padding: 40px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform 0.3s, box-shadow 0.3s;
+  min-width: 250px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+.card:hover {
+  transform: translateY(-10px);
+  box-shadow: 0 15px 30px rgba(0,0,0,0.3);
+}
+
+.card h2 {
+  margin-bottom: 15px;
+  color: #667eea;
+}
+
+.card p {
+  color: #666;
+}
