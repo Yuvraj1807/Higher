@@ -2,19 +2,35 @@ const express = require('express');
 const axios = require('axios');
 const router = express.Router();
 
-const GROQ_API_KEY = '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';
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+// Use environment variable - NOT hardcoded
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
-// Helper function to call Groq API
-async function generateText(prompt) {
+if (!GROQ_API_KEY) {
+  console.warn('⚠️ Warning: GROQ_API_KEY not set in environment variables');
+}
+
+// Generate Resume with AI
+router.post('/generate', async (req, res) => {
   try {
-    console.log('📤 Sending request to Groq API...');
-    
+    const { prompt } = req.body;
+
+    if (!prompt) {
+      return res.status(400).json({ error: 'Prompt is required' });
+    }
+
+    if (!GROQ_API_KEY) {
+      return res.status(500).json({ error: 'API key not configured' });
+    }
+
     const response = await axios.post(
-      GROQ_API_URL,
+      'https://api.groq.com/openai/v1/chat/completions',
       {
-        model: 'llama-3.3-70b-versatile',
+        model: 'mixtral-8x7b-32768',
         messages: [
+          {
+            role: 'system',
+            content: 'You are a professional resume writer. Create a well-formatted, ATS-optimized resume based on the provided information.'
+          },
           {
             role: 'user',
             content: prompt
@@ -25,264 +41,247 @@ async function generateText(prompt) {
       },
       {
         headers: {
-          Authorization: `Bearer ${GROQ_API_KEY}`,
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
           'Content-Type': 'application/json'
         }
       }
     );
 
-    console.log('✅ Response received');
-    const result = response.data.choices[0].message.content;
-    console.log('✅ Result generated, length:', result.length);
-    return result;
-  } catch (error) {
-    console.error('❌ Groq API error:');
-    console.error('Status:', error.response?.status);
-    console.error('Message:', error.message);
-    if (error.response?.data) {
-      console.error('Data:', error.response.data);
-    }
-    throw new Error(error.response?.data?.error?.message || error.message);
-  }
-}
-
-// Generate Resume with AI
-router.post('/generate', async (req, res) => {
-  try {
-    console.log('🔵 Generate Resume Request');
-    const { prompt } = req.body;
-
-    if (!prompt) {
-      return res.status(400).json({ error: 'Prompt is required' });
-    }
-
-    const resumePrompt = `You are an expert professional resume writer. Create a formal, well-structured, ATS-friendly resume based on this information:
-
-${prompt}
-
-Format the resume clearly with these sections:
-CONTACT INFORMATION
-PROFESSIONAL SUMMARY
-TECHNICAL SKILLS
-PROFESSIONAL EXPERIENCE
-EDUCATION
-CERTIFICATIONS & AWARDS
-
-Make it professional, concise, and optimized for applicant tracking systems.`;
-
-    const resume = await generateText(resumePrompt);
-
-    res.json({ 
-      success: true,
-      resume: resume,
-      message: 'Resume generated successfully' 
-    });
+    const resume = response.data.choices[0].message.content;
+    res.json({ resume });
   } catch (error) {
     console.error('Resume generation error:', error.message);
-    res.status(500).json({ 
-      error: error.message 
-    });
+    res.status(500).json({ error: 'Failed to generate resume' });
   }
 });
 
-// Review Resume with AI
+// Review Resume
 router.post('/review', async (req, res) => {
   try {
-    console.log('🔵 Review Resume Request');
     const { resume, jobDescription } = req.body;
 
     if (!resume || !jobDescription) {
-      return res.status(400).json({ error: 'Resume and job description required' });
+      return res.status(400).json({ error: 'Resume and job description are required' });
     }
 
-    const reviewPrompt = `You are an expert HR recruiter and resume analyst. Analyze this resume against the job description:
+    if (!GROQ_API_KEY) {
+      return res.status(500).json({ error: 'API key not configured' });
+    }
 
-RESUME:
-${resume.substring(0, 2000)}
+    const response = await axios.post(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        model: 'mixtral-8x7b-32768',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert recruiter. Review the resume against the job description and provide detailed feedback.'
+          },
+          {
+            role: 'user',
+            content: `Resume:\n${resume}\n\nJob Description:\n${jobDescription}\n\nProvide a detailed review with match percentage and suggestions.`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 1500
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
 
-JOB DESCRIPTION:
-${jobDescription.substring(0, 1500)}
-
-Provide a detailed analysis with:
-1. Match Score (0-100%)
-2. Top 3 Strengths
-3. Top 3 Weaknesses  
-4. Top 3 Recommendations
-5. Missing Skills from the job description
-
-Be specific and actionable.`;
-
-    const review = await generateText(reviewPrompt);
-
-    res.json({ 
-      success: true,
-      review: review,
-      reviewText: review
-    });
+    const review = response.data.choices[0].message.content;
+    res.json({ review });
   } catch (error) {
     console.error('Resume review error:', error.message);
-    res.status(500).json({ 
-      error: error.message 
-    });
+    res.status(500).json({ error: 'Failed to review resume' });
   }
 });
 
-// Optimize Resume with AI
+// Optimize Resume
 router.post('/optimize', async (req, res) => {
   try {
-    console.log('🔵 Optimize Resume Request');
-    const { resume, jobTitle } = req.body;
+    const { resume, jobDescription } = req.body;
 
-    if (!resume) {
-      return res.status(400).json({ error: 'Resume required' });
+    if (!resume || !jobDescription) {
+      return res.status(400).json({ error: 'Resume and job description are required' });
     }
 
-    const optimizePrompt = `You are an ATS optimization specialist. Optimize this resume for ${jobTitle || 'general'} role:
+    if (!GROQ_API_KEY) {
+      return res.status(500).json({ error: 'API key not configured' });
+    }
 
-${resume}
+    const response = await axios.post(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        model: 'mixtral-8x7b-32768',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an ATS optimization expert. Optimize the resume to match the job description and improve ATS compatibility.'
+          },
+          {
+            role: 'user',
+            content: `Resume:\n${resume}\n\nJob Description:\n${jobDescription}\n\nProvide an optimized version of the resume with ATS-friendly formatting and keyword placement.`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 2000
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
 
-Improvements:
-1. Add relevant keywords for ATS systems
-2. Use strong action verbs
-3. Add quantifiable metrics
-4. Better structure and formatting
-5. Improve relevance for ${jobTitle || 'the target role'}
-
-Provide the optimized resume ready to submit.`;
-
-    const optimized = await generateText(optimizePrompt);
-
-    res.json({ 
-      success: true,
-      optimizedResume: optimized,
-      message: 'Resume optimized successfully' 
-    });
+    const optimized = response.data.choices[0].message.content;
+    res.json({ optimized });
   } catch (error) {
     console.error('Resume optimization error:', error.message);
-    res.status(500).json({ 
-      error: error.message 
-    });
+    res.status(500).json({ error: 'Failed to optimize resume' });
   }
 });
 
-// Cover Letter Generation
+// Generate Cover Letter
 router.post('/cover-letter', async (req, res) => {
   try {
-    console.log('🔵 Cover Letter Request');
-    const { jobTitle, companyName, applicantName, skills, experience } = req.body;
+    const { resume, jobDescription, companyName } = req.body;
 
-    if (!jobTitle || !companyName || !applicantName) {
-      return res.status(400).json({ error: 'Job title, company name, and applicant name required' });
+    if (!resume || !jobDescription) {
+      return res.status(400).json({ error: 'Resume and job description are required' });
     }
 
-    const coverLetterPrompt = `Write a professional cover letter for:
-- Position: ${jobTitle}
-- Company: ${companyName}
-- Name: ${applicantName}
-- Skills: ${skills || 'Not specified'}
-- Experience: ${experience || 'Not specified'}
+    if (!GROQ_API_KEY) {
+      return res.status(500).json({ error: 'API key not configured' });
+    }
 
-Create a compelling 3-4 paragraph cover letter that:
-1. Shows enthusiasm for the role
-2. Highlights relevant skills
-3. Demonstrates company knowledge
-4. Has a strong closing
+    const response = await axios.post(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        model: 'mixtral-8x7b-32768',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a professional cover letter writer. Create a compelling, personalized cover letter.'
+          },
+          {
+            role: 'user',
+            content: `Resume:\n${resume}\n\nJob Description:\n${jobDescription}\n\nCompany: ${companyName || 'The Company'}\n\nWrite a professional cover letter that highlights relevant experience and enthusiasm for the role.`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 1500
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
 
-Format as a ready-to-send cover letter.`;
-
-    const coverLetter = await generateText(coverLetterPrompt);
-
-    res.json({ 
-      success: true,
-      coverLetter: coverLetter,
-      message: 'Cover letter generated successfully' 
-    });
+    const coverLetter = response.data.choices[0].message.content;
+    res.json({ coverLetter });
   } catch (error) {
     console.error('Cover letter generation error:', error.message);
-    res.status(500).json({ 
-      error: error.message 
-    });
+    res.status(500).json({ error: 'Failed to generate cover letter' });
   }
 });
 
-// Analyze Job Description
+// Analyze Job
 router.post('/analyze-job', async (req, res) => {
   try {
-    console.log('🔵 Analyze Job Request');
     const { jobDescription } = req.body;
 
     if (!jobDescription) {
-      return res.status(400).json({ error: 'Job description required' });
+      return res.status(400).json({ error: 'Job description is required' });
     }
 
-    const analyzePrompt = `Analyze this job description and extract key information:
+    if (!GROQ_API_KEY) {
+      return res.status(500).json({ error: 'API key not configured' });
+    }
 
-${jobDescription}
+    const response = await axios.post(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        model: 'mixtral-8x7b-32768',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a job analysis expert. Analyze job descriptions and provide key insights.'
+          },
+          {
+            role: 'user',
+            content: `Job Description:\n${jobDescription}\n\nProvide a detailed analysis including: key responsibilities, required skills, experience level, and salary insights if available.`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 1500
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
 
-Provide:
-1. Job Title
-2. Required Skills (list)
-3. Preferred Skills (list)
-4. Key Responsibilities (list)
-5. Desired Qualifications
-6. Seniority Level
-7. Work Arrangement (on-site/remote/hybrid)
-8. Salary (if mentioned)
-9. Top Tips for applicants
-
-Be detailed and specific.`;
-
-    const analysis = await generateText(analyzePrompt);
-
-    res.json({ 
-      success: true,
-      analysis: analysis,
-      analysisText: analysis
-    });
+    const analysis = response.data.choices[0].message.content;
+    res.json({ analysis });
   } catch (error) {
     console.error('Job analysis error:', error.message);
-    res.status(500).json({ 
-      error: error.message 
-    });
+    res.status(500).json({ error: 'Failed to analyze job' });
   }
 });
 
 // Interview Preparation
 router.post('/interview-prep', async (req, res) => {
   try {
-    console.log('🔵 Interview Prep Request');
-    const { jobTitle, companyName, experience } = req.body;
+    const { resume, jobDescription } = req.body;
 
-    if (!jobTitle || !companyName) {
-      return res.status(400).json({ error: 'Job title and company name required' });
+    if (!resume || !jobDescription) {
+      return res.status(400).json({ error: 'Resume and job description are required' });
     }
 
-    const interviewPrompt = `Prepare comprehensive interview guidance for ${jobTitle} at ${companyName}.
-Experience: ${experience || 'Not specified'}
+    if (!GROQ_API_KEY) {
+      return res.status(500).json({ error: 'API key not configured' });
+    }
 
-Provide:
-1. 5 Common Questions with tips
-2. 5 Technical Questions
-3. 5 Behavioral Questions (STAR method)
-4. 3 Company-specific Questions
-5. 5 Pro Interview Tips
-6. 3 Red Flags to avoid
-7. 3 Good Follow-up Questions
+    const response = await axios.post(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        model: 'mixtral-8x7b-32768',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an interview preparation coach. Generate interview questions and tips based on the role and candidate background.'
+          },
+          {
+            role: 'user',
+            content: `Resume:\n${resume}\n\nJob Description:\n${jobDescription}\n\nGenerate common interview questions, potential follow-ups, and tips for answering based on this specific role.`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 2000
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
 
-Be specific and detailed.`;
-
-    const prep = await generateText(interviewPrompt);
-
-    res.json({ 
-      success: true,
-      preparation: prep,
-      preparationText: prep
-    });
+    const interviewPrep = response.data.choices[0].message.content;
+    res.json({ interviewPrep });
   } catch (error) {
-    console.error('Interview preparation error:', error.message);
-    res.status(500).json({ 
-      error: error.message 
-    });
+    console.error('Interview prep error:', error.message);
+    res.status(500).json({ error: 'Failed to generate interview prep' });
   }
 });
 
